@@ -1,58 +1,108 @@
 import React, { Component } from 'react';
 import firebase from 'firebase';
+import FileUpload from './FileUpload';
 import './App.css';
 
 class App extends Component {
-  constructor () {
-      super();
-      this.state = {
-        user: null
-      };
 
-      this.handleAuth = this.handleAuth.bind(this);
-      this.handleLogout = this.handleLogout.bind(this);
+  constructor() {
+    super();
+    this.state = {
+      user: null,
+      pictures: []
+    }
+    this.handleAuth = this.handleAuth.bind(this);
+    this.handleLogOut = this.handleLogOut.bind(this);
+    this.handleUpload = this.handleUpload.bind(this);
   }
-  componentWillMount () {
+
+  componentWillMount() {
     firebase.auth().onAuthStateChanged(user => {
-      this.setState({ user })
+      this.setState({ user });
+    });
+    firebase.database().ref('pictures').on('child_added', snapshot => {
+      this.setState({
+        pictures: this.state.pictures.concat(snapshot.val())
+      });
     });
   }
-  handleAuth () {
+
+  handleAuth() {
     const provider = new firebase.auth.GoogleAuthProvider();
-
     firebase.auth().signInWithPopup(provider)
-      .then(result => console.log(`${result.user.email} ha iniciado sesión`))
+      .then(result => console.log(`${result.user.email} Has iniciado sesion`))
       .catch(error => console.log(`Error ${error.code}: ${error.message}`));
   }
 
-  handleLogout () {
+  handleLogOut() {
     firebase.auth().signOut()
-      .then(result => console.log(`${result.user.email} ha salido`))
+      .then(result => console.log(`${result.user.email} Has cerrado sesion`))
       .catch(error => console.log(`Error ${error.code}: ${error.message}`));
   }
 
-  renderLoginButton () {
-    // si el usuario esta logueado
-    if (this.state.user){
+  handleUpload(event) {
+    const file = event.target.files[0];
+    const storageRef = firebase.storage().ref(`/fotos/${file.name}`);
+    const task = storageRef.put(file);
+    task.on('state_changed', snapshot => {
+      let percentage = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+      this.setState({
+        uploadValue: percentage
+      })
+    }, error => {
+      console.log(error.message)
+    }, () => storageRef.getDownloadURL().then(url => {
+      const record = {
+        photoURL: this.state.user.photoURL,
+        displayName: this.state.user.displayName,
+        image: url
+      };
+      const dbRef = firebase.database().ref('pictures');
+      const newPicture = dbRef.push();
+      newPicture.set(record);
+    }));
+  }
+
+  renderLoginButton() {
+    //Si el usuario esta loguado 
+    if (this.state.user) {
       return (
         <div>
           <img width="100" src={this.state.user.photoURL} alt={this.state.user.displayName} />
-          <p>Hola {this.state.user.displayName}</p>
-          <button onClick={this.handleLogout}>Salir</button>
+          <p>Hola {this.state.user.displayName}!</p>
+          <button onClick={this.handleLogOut}>Cerrar sesion</button>
+
+          <FileUpload onUpload={this.handleUpload} uploadValue={this.state.uploadValue} />
+
+          {
+            this.state.pictures.map(picture => (
+              <div className="App-card">
+                <figure className="App-card-image">
+                  <img width="320" src={picture.image} alt="imagen"/>
+                  <figCaption className="App-card-footer">
+                    <img className="App-card-avatar" width="48" src={picture.photoURL} alt={picture.displayName} />
+                    <span className="App-card-name">{picture.displayName}</span>
+                  </figCaption>
+                </figure>
+              </div>
+            )).reverse()
+          }
+
         </div>
       );
-    }else {
-      // si no lo está
+    } else {
+      //Si no lo esta
       return (
-      <button onClick={this.handleAuth}>Login con Google</button>
-      )
+        <button onClick={this.handleAuth}>Login con google</button>
+      );
     }
   }
+
   render() {
     return (
       <div className="App">
         <header className="App-header">
-          <h1 className="App-title">Bienvenidos a React Js</h1>
+          <h1 className="App-title">Kraken</h1>
         </header>
         <p className="App-intro">
           {this.renderLoginButton()}
